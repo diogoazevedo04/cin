@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# VS Code
+.vscode/
+
+# Dados grandes
+data/gtfs/*.zip
+
+# Sistemas
+.DS_Store
+Thumbs.db
