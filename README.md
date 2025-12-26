@@ -146,7 +146,3 @@ Os principais conceitos abordados incluem:
 
 * Diogo José Borges Dias
 * Diogo Lopes Azevedo
-
-```
-
-```
