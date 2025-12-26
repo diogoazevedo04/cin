@@ -1,13 +1,4 @@
-
-# Otimização Multiobjetivo de Percursos Multimodais no Grande Porto
-
-Este projeto implementa um sistema de planeamento de percursos multimodais para a Área Metropolitana do Porto, formulado como um problema de otimização multiobjetivo e resolvido através do algoritmo MOEA/D (Multi-Objective Evolutionary Algorithm based on Decomposition).
-
-O sistema considera simultaneamente a minimização do tempo total de viagem e das emissões de dióxido de carbono (CO₂), integrando redes de Metro do Porto, Autocarros da STCP e deslocações pedonais. A abordagem baseia-se em técnicas de Computação Inspirada na Natureza, permitindo a geração de múltiplas soluções de compromisso entre eficiência temporal e impacto ambiental.
-
----
-
-## Estrutura do Projeto
+# Estrutura do Projeto
 
 ```text
 .
@@ -69,12 +60,11 @@ As arestas do grafo incluem informação detalhada sobre:
 * Emissões de CO₂
 * Modo de transporte
 
-As ligações pedonais são calculadas com recurso à API OSRM, utilizando uma abordagem de fallback baseada na distância Haversine em caso de falha.
 
 **Para gerar o grafo base:**
 
 ```bash
-python graph.py
+python src/graph.py
 
 ```
 
@@ -111,7 +101,7 @@ O ficheiro `main.py` funciona como ponto de entrada do sistema e orquestra todas
 **Execução:**
 
 ```bash
-python main.py
+python src/main.py
 
 ```
 
@@ -134,7 +124,7 @@ O ficheiro `visualize.py` permite gerar os gráficos utilizados na análise expe
 **Execução:**
 
 ```bash
-python visualize.py
+python src/visualize.py
 
 ```
 
@@ -151,15 +141,6 @@ Os principais conceitos abordados incluem:
 * Algoritmos Evolucionários
 * MOEA/D
 * Planeamento de percursos em grafos
-
-## Trabalho Futuro
-
-Possíveis extensões do trabalho incluem:
-
-* Integração de dados em tempo real
-* Comparação com outros algoritmos multiobjetivo (NSGA-II, SPEA2)
-* Introdução de novos critérios de otimização
-* Desenvolvimento de uma interface gráfica para apoio à decisão
 
 ## Autores
 
