@@ -1,62 +1,72 @@
 import random
 from collections import defaultdict
-from typing import List, Tuple, Dict, NamedTuple
+from typing import List, Tuple, Dict, Callable, Optional
 
 import networkx as nx
 import numpy as np
 
+MAX_TRANSFERS=4
+MAX_WALK_TIME=90.0
+TRANSFER_PENALTY=500.0
+WALK_TIME_PENALTY=100.0
 
-def get_edge(G, u, v):
-    """Helper para MultiDiGraph: retorna a aresta com menor tempo entre u e v."""
-    if isinstance(G, nx.MultiDiGraph):
-        if G.has_edge(u, v):
-            edges = G[u][v]
-            if not edges:
-                return {}
-            best_key = min(edges.keys(), key=lambda k: edges[k].get('time_min', float('inf')))
-            return edges[best_key]
-        elif G.has_edge(v, u):
-            edges = G[v][u]
-            if not edges:
-                return {}
-            best_key = min(edges.keys(), key=lambda k: edges[k].get('time_min', float('inf')))
-            return edges[best_key]
-        else:
+POPULATION_SIZE=100
+N_NEIGHBORS=20
+MAX_GENERATIONS=50
+MUTATION_RATE=0.8
+CROSSOVER_RATE=1.0
+
+def get_edge(G, u, v, score = None):
+    """Seleciona a aresta entre u e v em MultiDiGraph.
+
+    Se existir mais do que uma aresta entre o par (u, v),
+    escolhe a aresta que minimiza o "score" fornecido. Na ausência de score,
+    escolhe a aresta com menor tempo ("time_min").
+    """
+    def pick_best_edge(edge_dict):
+        if not edge_dict:
             return {}
+        if score:
+            scored = [(k, score(edge_dict[k])) for k in edge_dict.keys()]
+            if not scored:
+                return {}
+            min_score = min(s for _, s in scored)
+            tol = 1e-9
+            candidates = [k for k, s in scored if s <= min_score + tol]
+            chosen_key = random.choice(candidates)
+            return edge_dict[chosen_key]
+        else:
+            best_key = min(
+                edge_dict.keys(),
+                key=lambda k: edge_dict[k].get('time_min', float('inf'))
+            )
+            return edge_dict[best_key]
+
+    if G.has_edge(u, v):
+        return pick_best_edge(G[u][v])
+    elif G.has_edge(v, u):
+        return pick_best_edge(G[v][u])
     else:
-        if G.has_edge(u, v):
-            return G[u][v]
-        elif G.has_edge(v, u):
-            return G[v][u]
-        else:
-            return {}
+        return {}
 
 
-class Solution(NamedTuple):
-    """Representa um caminho com os seus valores objetivos."""
-    path: List[str]
-    time: float
-    co2: float
-    violation: float = 0.0
-    edges: List[Dict] = []
-
-    def dominates(self, other: "Solution") -> bool:
-        objectives = np.array([self.time, self.co2])
-        other_objectives = np.array([other.time, other.co2])
-        better = False
-        for a, b in zip(objectives, other_objectives):
-            if a > b:
-                return False
-            if a < b:
-                better = True
-        return better
+def create_solution(path, time, co2, violation= 0.0, edges = None, weights = None):
+    """Cria uma solução como dicionário."""
+    if edges is None:
+        edges = []
+    return {
+        "path": path,
+        "time": time,
+        "co2": co2,
+        "violation": violation,
+        "edges": edges,
+        "weights": weights,
+    }
 
 
-# ==============================
-# Funções de Inicialização
-# ==============================
+# --- Funções de Inicialização ---
 
-def generate_weights(population_size: int) -> np.ndarray:
+def generate_weights(population_size):
     """Gera vetores de peso lineares para decomposição."""
     return np.array(
         [[i / (population_size - 1), 1 - i / (population_size - 1)]
@@ -64,7 +74,7 @@ def generate_weights(population_size: int) -> np.ndarray:
     )
 
 
-def generate_neighborhoods(weights: np.ndarray, n_neighbors: int) -> List[List[int]]:
+def generate_neighborhoods(weights, n_neighbors):
     """Gera vizinhanças baseadas em proximidade de pesos."""
     population_size = len(weights)
     neighborhoods = []
@@ -78,19 +88,22 @@ def generate_neighborhoods(weights: np.ndarray, n_neighbors: int) -> List[List[i
     return neighborhoods
 
 
-# ==============================
-# Funções de Avaliação
-# ==============================
+# --- Funções de Avaliação ---
 
 def evaluate_path(
-    path: List[str],
-    graph: nx.DiGraph,
-    max_transfers: int = 4,
-    max_walk_time: float = 90.0,
-    transfer_penalty: float = 500.0,
-    walk_time_penalty: float = 100.0
-) -> Tuple[float, float, float, List[Dict]]:
-    """Calcula tempo, CO2 e violação de restrições."""
+    path,
+    graph,
+    max_transfers=MAX_TRANSFERS,
+    max_walk_time=MAX_WALK_TIME,
+    transfer_penalty=TRANSFER_PENALTY,
+    walk_time_penalty=WALK_TIME_PENALTY,
+    edge_score=None
+):
+    """Calcula tempo, CO2 e violação de restrições.
+
+    edge_score: função opcional para selecionar, em grafos MultiDiGraph,
+    a aresta entre dois nós quando existem múltiplas arestas paralelas.
+    """
     time = 0.0
     co2 = 0.0
     walk_time = 0.0
@@ -99,7 +112,7 @@ def evaluate_path(
     edges_used = []
 
     for u, v in zip(path[:-1], path[1:]):
-        edge = get_edge(graph, u, v)
+        edge = get_edge(graph, u, v, score=edge_score)
         edge_time = edge.get("time_min", 0.0)
         edge_co2 = edge.get("co2", 0.0)
         mode = edge.get("modo", "walk")
@@ -125,16 +138,16 @@ def evaluate_path(
 
 
 def heuristic_initialization(
-    graph: nx.DiGraph,
-    source: str,
-    target: str,
-    weights: np.ndarray,
-    population_size: int,
-    max_transfers: int = 4,
-    max_walk_time: float = 90.0,
-    transfer_penalty: float = 500.0,
-    walk_time_penalty: float = 100.0
-) -> List[Solution]:
+    graph,
+    source,
+    target,
+    weights,
+    population_size,
+    max_transfers = MAX_TRANSFERS,
+    max_walk_time = MAX_WALK_TIME,
+    transfer_penalty = TRANSFER_PENALTY,
+    walk_time_penalty = WALK_TIME_PENALTY
+):
     """Inicialização heurística com shortest path ponderado."""
     solutions = []
 
@@ -144,7 +157,7 @@ def heuristic_initialization(
     max_time = max(times) if times else 1.0
     max_co2 = max(co2s) if co2s else 1.0
 
-    for w_time, w_co2 in weights[:-1]:
+    for w_time, w_co2 in weights:  # Usa todos os pesos
         try:
             def cost(u, v, d):
                 return (
@@ -153,43 +166,51 @@ def heuristic_initialization(
                 )
 
             path = nx.shortest_path(graph, source, target, weight=cost)
-            t, c, viol, edges = evaluate_path(path, graph, max_transfers, max_walk_time, transfer_penalty, walk_time_penalty)
-            solutions.append(Solution(path, t, c, viol, edges))
+            # Seleciona arestas paralelas com o mesmo custo ponderado usado na busca
+            edge_score = lambda d: (w_time * d.get("time_min", 0.0) / max_time +
+                                    w_co2 * d.get("co2", 0.0) / max_co2)
+            t, c, viol, edges = evaluate_path(
+                path, graph,
+                max_transfers, max_walk_time, transfer_penalty, walk_time_penalty,
+                edge_score=edge_score,
+            )
+            solutions.append(create_solution(path, t, c, viol, edges, weights=(w_time, w_co2)))
         except nx.NetworkXNoPath:
             continue
 
-    while len(solutions) < population_size - 1 and solutions:
+    while len(solutions) < population_size and solutions:  # 100 soluções
         base = random.choice(solutions)
-        mutated = mutate(base.path, graph)
-        t, c, viol, edges = evaluate_path(mutated, graph, max_transfers, max_walk_time, transfer_penalty, walk_time_penalty)
-        solutions.append(Solution(mutated, t, c, viol, edges))
+        # usa os pesos da solução base para orientar a mutação e avaliação
+        b_w = base.get("weights") or (0.5, 0.5)
+        edge_score_b = lambda d: (b_w[0] * d.get("time_min", 0.0) / max_time +
+                                  b_w[1] * d.get("co2", 0.0) / max_co2)
+        mutated = mutate(base["path"], graph, edge_score=edge_score_b)
+        t, c, viol, edges = evaluate_path(
+            mutated, graph,
+            max_transfers, max_walk_time, transfer_penalty, walk_time_penalty,
+            edge_score=edge_score_b,
+        )
+        solutions.append(create_solution(mutated, t, c, viol, edges, weights=b_w))
 
-    return solutions[:population_size - 1]
+    return solutions
 
 
 def create_walk_only_solution(
-    graph: nx.DiGraph,
-    source: str,
-    target: str,
-    max_walk_time: float = 90.0,
-    walk_time_penalty: float = 100.0
-) -> Solution:
+    graph,
+    source,
+    target,
+    max_walk_time = MAX_WALK_TIME,
+    walk_time_penalty = WALK_TIME_PENALTY
+):
     """Cria solução 100% walk se possível."""
     H = nx.DiGraph()
     for n, data in graph.nodes(data=True):
         H.add_node(n, **data)
 
-    if isinstance(graph, nx.MultiDiGraph):
-        for u, v, key, data in graph.edges(keys=True, data=True):
-            if data.get("modo") != "walk":
-                continue
-            e = H.get_edge_data(u, v)
-            if e is None or data.get("time_min", float("inf")) < e.get("time_min", float("inf")):
-                H.add_edge(u, v, **data)
-    else:
-        for u, v, data in graph.edges(data=True):
-            if data.get("modo") == "walk":
-                H.add_edge(u, v, **data)
+    # Copia apenas arestas walk (só existe uma aresta walk por par de vértices)
+    for u, v, key, data in graph.edges(keys=True, data=True):
+        if data.get("modo") == "walk":
+            H.add_edge(u, v, **data)
 
     try:
         path = nx.shortest_path(H, source, target, weight="time_min")
@@ -209,15 +230,17 @@ def create_walk_only_solution(
     if time > max_walk_time:
         violation += walk_time_penalty * (time - max_walk_time)
 
-    return Solution(path, time, co2, violation, edges_used)
+    return create_solution(path, time, co2, violation, edges_used)
 
 
-# ==============================
-# Operadores Genéticos
-# ==============================
+# --- Operadores Genéticos ---
 
-def mutate(path: List[str], graph: nx.DiGraph, rate: float = 0.8) -> List[str]:
-    """Mutação por recombinação de segmentos."""
+def mutate(path, graph, rate = MUTATION_RATE, edge_score = None):
+    """Mutação por recombinação de segmentos.
+
+    edge_score: se fornecido, usa este score como custo na busca do subcaminho
+    entre dois nós (em vez de escolher aleatoriamente entre 'time_min' e 'co2').
+    """
     if len(path) < 3 or random.random() > rate:
         return path
 
@@ -225,8 +248,16 @@ def mutate(path: List[str], graph: nx.DiGraph, rate: float = 0.8) -> List[str]:
     j = random.randint(i + 1, len(path) - 1)
 
     try:
-        weight = random.choice(["time_min", "co2"])
-        sub = nx.shortest_path(graph, path[i], path[j], weight=weight)
+        if edge_score is None:
+            weight = random.choice(["time_min", "co2"])
+            sub = nx.shortest_path(graph, path[i], path[j], weight=weight)
+        else:
+            # Introduz ligeira aleatoriedade no custo para fomentar diversidade
+            def cost(u, v, d):
+                base = edge_score(d)
+                jitter = 1.0 + 0.05 * (random.random() * 2 - 1)  # +/-5%
+                return base * jitter
+            sub = nx.shortest_path(graph, path[i], path[j], weight=cost)
         new_path = path[:i] + sub + path[j + 1:]
         cleaned = [new_path[0]]
         for n in new_path[1:]:
@@ -237,44 +268,56 @@ def mutate(path: List[str], graph: nx.DiGraph, rate: float = 0.8) -> List[str]:
         return path
 
 
-def crossover(p1: List[str], p2: List[str]) -> List[str]:
-    """Cruzamento por nó comum."""
+def crossover(p1, p2, rate = CROSSOVER_RATE):
+    """Cruzamento por nó comum com probabilidade controlada."""
+    if random.random() > rate:
+        return random.choice([p1, p2])
+
     common = list(set(p1) & set(p2))
-    if len(common) < 2:
+    if len(common) < 3:
         return random.choice([p1, p2])
 
     n = random.choice(common)
     try:
         return p1[: p1.index(n)] + p2[p2.index(n):]
     except ValueError:
-        return p1
+        return random.choice([p1, p2])
+    
+'''
+def repair_path(path):
+    """Remove ciclos mantendo primeira ocorrência de cada nó."""
+    seen = set()
+    repaired = []
+    for node in path:
+        if node not in seen:
+            repaired.append(node)
+            seen.add(node)
+    return repaired
+'''
 
+# --- Funções de Otimização ---
 
-# ==============================
-# Funções de Otimização
-# ==============================
-
-def tchebycheff(obj: np.ndarray, w: np.ndarray, ref: np.ndarray) -> float:
+def tchebycheff(obj, w, ref):
     """Agregação Tchebycheff."""
     return np.max(w * np.abs(obj - ref))
 
 
-def update_reference(population: List[Solution]) -> np.ndarray:
+def update_reference(population):
     """Atualiza ponto de referência ideal."""
-    times = [s.time for s in population]
-    co2s = [s.co2 for s in population]
+    times = [s["time"] for s in population]
+    co2s = [s["co2"] for s in population]
     return np.array([min(times), min(co2s)])
 
 
-def update_pareto(pareto_front: List[Solution], sol: Solution) -> List[Solution]:
+def update_pareto(pareto_front, sol):
     """Atualiza frente de Pareto com penalização por violação."""
     def penalized(obj, viol):
         return np.array([obj[0] + viol, obj[1] + viol])
 
-    penal_sol = penalized(np.array([sol.time, sol.co2]), sol.violation)
+    penal_sol = penalized(np.array([sol["time"], sol["co2"]]), sol["violation"])
     filtered = []
     for s in pareto_front:
-        penal_s = penalized(np.array([s.time, s.co2]), s.violation)
+        penal_s = penalized(np.array([s["time"], s["co2"]]), s["violation"])
         if all(penal_sol <= penal_s) and any(penal_sol < penal_s):
             continue
         if all(penal_s <= penal_sol) and any(penal_s < penal_sol):
@@ -284,17 +327,32 @@ def update_pareto(pareto_front: List[Solution], sol: Solution) -> List[Solution]
     return prune_pareto_epsilon(filtered)
 
 
-def prune_pareto_epsilon(pareto_front: List[Solution], epsilon_time: float = 0.5, epsilon_co2: float = 2.0) -> List[Solution]:
-    """Remove soluções redundantes (epsilon-dominance)."""
+def prune_pareto_epsilon(pareto_front, epsilon_time = 0.3, epsilon_co2 = 1.0):
+    """Remove soluções redundantes (epsilon-dominance).
+    
+    Ordena por compromisso normalizado (não só por tempo) para evitar viés
+    e manter melhor diversidade na frente de Pareto.
+    """
     if len(pareto_front) <= 1:
         return pareto_front
     
-    sorted_front = sorted(pareto_front, key=lambda s: s.time)
+    times = [s["time"] for s in pareto_front]
+    co2s = [s["co2"] for s in pareto_front]
+    min_time, max_time = min(times), max(times)
+    min_co2, max_co2 = min(co2s), max(co2s)
+    
+    def compromise_score(sol):
+        norm_time = (sol["time"] - min_time) / (max_time - min_time + 1e-9)
+        norm_co2 = (sol["co2"] - min_co2) / (max_co2 - min_co2 + 1e-9)
+        return norm_time + norm_co2
+    
+    sorted_front = sorted(pareto_front, key=compromise_score)
     pruned = [sorted_front[0]]
+    
     for sol in sorted_front[1:]:
         keep = True
         for kept in pruned:
-            if abs(sol.time - kept.time) <= epsilon_time and abs(sol.co2 - kept.co2) <= epsilon_co2:
+            if abs(sol["time"] - kept["time"]) <= epsilon_time and abs(sol["co2"] - kept["co2"]) <= epsilon_co2:
                 keep = False
                 break
         if keep:
@@ -302,12 +360,12 @@ def prune_pareto_epsilon(pareto_front: List[Solution], epsilon_time: float = 0.5
     return pruned
 
 
-def hypervolume_2d(front: List[Solution], ref: Tuple[float, float]) -> float:
+def hypervolume_2d(front, ref):
     """Hipervolume 2D para minimização."""
     if not front:
         return 0.0
     
-    pts = sorted([(s.time, s.co2) for s in front], key=lambda x: x[0])
+    pts = sorted([(s["time"], s["co2"]) for s in front], key=lambda x: x[0])
     envelope = []
     best_c = float("inf")
     for t, c in pts:
@@ -325,45 +383,40 @@ def hypervolume_2d(front: List[Solution], ref: Tuple[float, float]) -> float:
     return hv
 
 
-def collect_generation_metrics(generation: int, population: List[Solution], pareto_front: List[Solution], hv_ref: Tuple[float, float]) -> Dict:
+def collect_generation_metrics(generation, pareto_front, hv_ref):
     """Coleta métricas de uma geração."""
-    times_pop = [s.time for s in population]
-    co2s_pop = [s.co2 for s in population]
-    violations_pop = [s.violation for s in population]
-
-    times_pareto = [s.time for s in pareto_front] or [0.0]
-    co2s_pareto = [s.co2 for s in pareto_front] or [0.0]
-
+    times_pareto = [s["time"] for s in pareto_front] or [0.0]
+    co2s_pareto = [s["co2"] for s in pareto_front] or [0.0]
+    
     hv = hypervolume_2d(pareto_front, hv_ref)
 
     return {
         "generation": generation,
         "pareto_size": len(pareto_front),
-        "avg_time_pop": float(np.mean(times_pop)) if times_pop else 0.0,
-        "avg_co2_pop": float(np.mean(co2s_pop)) if co2s_pop else 0.0,
-        "min_time_pareto": float(min(times_pareto)) if times_pareto else 0.0,
-        "min_co2_pareto": float(min(co2s_pareto)) if co2s_pareto else 0.0,
-        "avg_violation_pop": float(np.mean(violations_pop)) if violations_pop else 0.0,
+        "min_time_pareto": float(min(times_pareto)),
+        "max_time_pareto": float(max(times_pareto)),
+        "min_co2_pareto": float(min(co2s_pareto)),
+        "max_co2_pareto": float(max(co2s_pareto)),
         "hypervolume": hv,
     }
 
 
-# ==============================
-# Função Principal de Otimização
-# ==============================
+# --- Função Principal de Otimização ---
 
-def optimize_moead(
-    graph: nx.DiGraph,
-    source: str,
-    target: str,
-    population_size: int = 100,
-    n_neighbors: int = 20,
-    max_generations: int = 50,
-    max_transfers: int = 4,
-    max_walk_time: float = 90.0,
-    transfer_penalty: float = 500.0,
-    walk_time_penalty: float = 100.0,
-) -> Tuple[List[Solution], Dict[str, Solution], List[Dict]]:
+def moead(
+    graph,
+    source,
+    target,
+    population_size = POPULATION_SIZE,
+    n_neighbors = N_NEIGHBORS,
+    max_generations = MAX_GENERATIONS,
+    crossover_rate = CROSSOVER_RATE,
+    max_transfers = MAX_TRANSFERS,
+    max_walk_time = MAX_WALK_TIME,
+    transfer_penalty = TRANSFER_PENALTY,
+    walk_time_penalty = WALK_TIME_PENALTY,
+    verbose = True,
+):
     """Executa MOEA/D e retorna (pareto_front, extremes, history)."""
     
     weights = generate_weights(population_size)
@@ -374,38 +427,59 @@ def optimize_moead(
         max_transfers, max_walk_time, transfer_penalty, walk_time_penalty
     )
 
-    print(f"\n{'='*70}")
-    print(f"MOEA/D Inicialização")
-    print(f"{'='*70}")
-    print(f"População inicial: {len(population)} soluções (heurística)")
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"MOEA/D Inicialização")
+        print(f"{'='*70}")
+        print(f"População inicial: {len(population)} soluções (heurística)")
     
+    # Substitui population[0] (weights[0]=[0.0,1.0] minimiza CO₂) por walk-only se disponível
     walk_seed = create_walk_only_solution(graph, source, target, max_walk_time, walk_time_penalty)
     if walk_seed:
-        population.append(walk_seed)
-        print(f"Walk-only seed adicionado. População agora: {len(population)} soluções")
+        population[0] = walk_seed
+        if verbose:
+            print(f"Walk-only seed substituiu population[0]. População: {len(population)} soluções")
+    else:
+        if verbose:
+            print(f"Walk-only não disponível. População mantém heurística: {len(population)} soluções")
 
-    if population:
-        times = [s.time for s in population]
-        co2s = [s.co2 for s in population]
-        print(f"  Tempo: min={min(times):.1f}, avg={np.mean(times):.1f}, max={max(times):.1f}")
-        print(f"  CO₂:   min={min(co2s):.1f}, avg={np.mean(co2s):.1f}, max={max(co2s):.1f}")
+    if population and verbose:
+        times_pop = [s["time"] for s in population]
+        co2s_pop = [s["co2"] for s in population]
+        print(f"  População - Tempo: min={min(times_pop):.1f}, avg={np.mean(times_pop):.1f}, max={max(times_pop):.1f}")
+        print(f"  População - CO₂:   min={min(co2s_pop):.1f}, avg={np.mean(co2s_pop):.1f}, max={max(co2s_pop):.1f}")
 
     pareto_front = []
     for s in population:
         pareto_front = update_pareto(pareto_front, s)
 
-    print(f"Pareto inicial: {len(pareto_front)} soluções")
+    if verbose:
+        if pareto_front:
+            times_pareto = [s["time"] for s in pareto_front]
+            co2s_pareto = [s["co2"] for s in pareto_front]
+            print(f"Pareto inicial: {len(pareto_front)} soluções")
+            print(f"  Pareto - Tempo: min={min(times_pareto):.1f}, max={max(times_pareto):.1f}")
+            print(f"  Pareto - CO₂:   min={min(co2s_pareto):.1f}, max={max(co2s_pareto):.1f}")
+        else:
+            print(f"Pareto inicial: 0 soluções")
 
-    times_all = [s.time for s in population]
-    co2s_all = [s.co2 for s in population]
+    times_all = [s["time"] for s in population]
+    co2s_all = [s["co2"] for s in population]
     hv_reference = (
         (max(times_all) if times_all else 1.0) * 1.1,
         (max(co2s_all) if co2s_all else 1.0) * 1.1
     )
 
-    print(f"\n{'='*70}")
-    print(f"Evolução por Geração")
-    print(f"{'='*70}\n")
+    # Pré-cálculo para normalização dos atributos das arestas
+    edge_times = [d.get("time_min", 0.0) for _, _, d in graph.edges(data=True)]
+    edge_co2s = [d.get("co2", 0.0) for _, _, d in graph.edges(data=True)]
+    max_edge_time = max(edge_times) if edge_times else 1.0
+    max_edge_co2 = max(edge_co2s) if edge_co2s else 1.0
+
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"Evolução por Geração")
+        print(f"{'='*70}\n")
 
     history = []
 
@@ -418,60 +492,71 @@ def optimize_moead(
             p1 = population[i]
             p2 = population[random.choice(neighbors)]
 
-            child_path = (
-                crossover(p1.path, p2.path)
-                if random.random() < 0.8 else p1.path
-            )
-            child_path = mutate(child_path, graph)
+            child_path = crossover(p1["path"], p2["path"], rate=crossover_rate)
+            
+            child_path = mutate(child_path, graph, edge_score=None)
 
-            t, c, viol, edges = evaluate_path(child_path, graph, max_transfers, max_walk_time, transfer_penalty, walk_time_penalty)
-            child = Solution(child_path, t, c, viol, edges)
+            w_time, w_co2 = weights[i]
+            edge_score = lambda d: (w_time * d.get("time_min", 0.0) / max_edge_time +
+                                    w_co2 * d.get("co2", 0.0) / max_edge_co2)
+            t, c, viol, edges = evaluate_path(
+                child_path, graph,
+                max_transfers, max_walk_time, transfer_penalty, walk_time_penalty,
+                edge_score=edge_score,
+            )
+            child = create_solution(child_path, t, c, viol, edges)
 
             for j in neighbors:
-                child_scalar = tchebycheff(np.array([child.time, child.co2]), weights[j], ref) + child.violation
-                curr_scalar = tchebycheff(np.array([population[j].time, population[j].co2]), weights[j], ref) + population[j].violation
+                child_scalar = tchebycheff(np.array([child["time"], child["co2"]]), weights[j], ref) + child["violation"]
+                curr_scalar = tchebycheff(np.array([population[j]["time"], population[j]["co2"]]), weights[j], ref) + population[j]["violation"]
                 if child_scalar < curr_scalar:
                     population[j] = child
 
             pareto_front = update_pareto(pareto_front, child)
 
-        metrics = collect_generation_metrics(gen + 1, population, pareto_front, hv_reference)
+        metrics = collect_generation_metrics(gen + 1, pareto_front, hv_reference)
         history.append(metrics)
 
-        pareto_size_after = len(pareto_front)
-        new_solutions = pareto_size_after - pareto_size_before
-        times_pareto = [s.time for s in pareto_front] or [0.0]
-        co2s_pareto = [s.co2 for s in pareto_front] or [0.0]
-        print(f"Gen {gen + 1:2d} | Pareto: {pareto_size_after:4d} (+{new_solutions:3d}) | "
-              f"Time[{min(times_pareto):.1f}, {max(times_pareto):.1f}] | "
-              f"CO₂[{min(co2s_pareto):.1f}, {max(co2s_pareto):.1f}] | "
-              f"HV: {metrics['hypervolume']:.6f}")
+        if verbose:
+            pareto_size_after = len(pareto_front)
+            new_solutions = pareto_size_after - pareto_size_before
+            print(f"Gen {gen + 1:2d} | Pareto: {pareto_size_after:4d} (+{new_solutions:3d}) | "
+                  f"Time[{metrics['min_time_pareto']:.1f}, {metrics['max_time_pareto']:.1f}] | "
+                  f"CO₂[{metrics['min_co2_pareto']:.1f}, {metrics['max_co2_pareto']:.1f}] | "
+                  f"HV: {metrics['hypervolume']:.6f}")
 
-    print(f"\n{'='*70}")
-    print(f"Otimização Concluída")
-    print(f"{'='*70}")
-    print(f"Tamanho final da Frente de Pareto: {len(pareto_front)}")
-    if pareto_front:
-        times = [s.time for s in pareto_front]
-        co2s = [s.co2 for s in pareto_front]
-        print(f"Tempo final: min={min(times):.1f}, max={max(times):.1f}")
-        print(f"CO₂ final:   min={min(co2s):.1f}, max={max(co2s):.1f}")
-    print(f"{'='*70}\n")
+    if verbose:
+        print(f"\n{'='*70}")
+        print(f"Otimização Concluída")
+        print(f"{'='*70}")
+        print(f"Tamanho final da Frente de Pareto: {len(pareto_front)}")
+        if pareto_front:
+            times = [s["time"] for s in pareto_front]
+            co2s = [s["co2"] for s in pareto_front]
+            print(f"Tempo final: min={min(times):.1f}, max={max(times):.1f}")
+            print(f"CO₂ final:   min={min(co2s):.1f}, max={max(co2s):.1f}")
+            
+            mode_usage = defaultdict(int)
+            for s in pareto_front:
+                for edge in s.get("edges", []):
+                    mode_usage[edge.get("modo", "unknown")] += 1
+            print(f"Uso de modos: {dict(mode_usage)}")
+        print(f"{'='*70}\n")
 
     extremes = get_extreme_solutions(pareto_front)
     return pareto_front, extremes, history
 
 
-def get_extreme_solutions(pareto_front: List[Solution]) -> Dict[str, Solution]:
+def get_extreme_solutions(pareto_front: List[Dict]) -> Dict[str, Dict]:
     """Retorna soluções extremas do Pareto."""
     if not pareto_front:
         return {}
 
-    best_time = min(pareto_front, key=lambda s: s.time)
-    best_co2 = min(pareto_front, key=lambda s: s.co2)
+    best_time = min(pareto_front, key=lambda s: s["time"])
+    best_co2 = min(pareto_front, key=lambda s: s["co2"])
 
-    times = [s.time for s in pareto_front]
-    co2s = [s.co2 for s in pareto_front]
+    times = [s["time"] for s in pareto_front]
+    co2s = [s["co2"] for s in pareto_front]
 
     t_min, t_max = min(times), max(times)
     c_min, c_max = min(co2s), max(co2s)
@@ -479,8 +564,8 @@ def get_extreme_solutions(pareto_front: List[Solution]) -> Dict[str, Solution]:
     balanced = min(
         pareto_front,
         key=lambda s: (
-            (s.time - t_min) / (t_max - t_min + 1e-9) +
-            (s.co2 - c_min) / (c_max - c_min + 1e-9)
+            (s["time"] - t_min) / (t_max - t_min + 1e-9) +
+            (s["co2"] - c_min) / (c_max - c_min + 1e-9)
         ),
     )
 
@@ -489,20 +574,3 @@ def get_extreme_solutions(pareto_front: List[Solution]) -> Dict[str, Solution]:
         "best_co2": best_co2,
         "balanced": balanced,
     }
-
-
-def analyze_pareto_front(pareto: List[Solution], graph: nx.DiGraph) -> None:
-    """Análise básica do Pareto."""
-    times = [s.time for s in pareto]
-    co2s = [s.co2 for s in pareto]
-
-    mode_usage = defaultdict(int)
-    for s in pareto:
-        for u, v in zip(s.path[:-1], s.path[1:]):
-            edge = get_edge(graph, u, v)
-            mode_usage[edge["modo"]] += 1
-
-    print("Pareto solutions:", len(pareto))
-    print("Time min / avg / max:", min(times), np.mean(times), max(times))
-    print("CO2 min / avg / max:", min(co2s), np.mean(co2s), max(co2s))
-    print("Mode usage:", dict(mode_usage))

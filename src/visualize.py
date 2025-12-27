@@ -5,9 +5,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-# =========================
-# Configurações Globais
-# =========================
+# --- Configurações Globais ---
+
 FIGURES_DIR = Path("figures")
 FIGURES_DIR.mkdir(exist_ok=True)
 
@@ -15,9 +14,8 @@ RESULTS_PKL = Path("data/output/moead_results.pkl")
 PARETO_CSV = Path("data/pareto_front.csv")
 
 
-# =========================
-# Utilitários
-# =========================
+# --- Utilitários ---
+
 def load_results():
     if not RESULTS_PKL.exists():
         raise FileNotFoundError(f"Resultados não encontrados: {RESULTS_PKL}")
@@ -26,9 +24,8 @@ def load_results():
         return pickle.load(f)
 
 
-# =========================
-# Gráfico 1 — Frente de Pareto
-# =========================
+# --- Gráficos 1 — Frente de Pareto ---
+
 def plot_pareto_front():
     if not PARETO_CSV.exists():
         raise FileNotFoundError(f"CSV da frente de Pareto não encontrado: {PARETO_CSV}")
@@ -49,9 +46,8 @@ def plot_pareto_front():
     print(f"[OK] Frente de Pareto guardada em {output}")
 
 
-# =========================
-# Gráfico 2 — Evolução da Frente de Pareto
-# =========================
+# --- Gráficos 2 — Evolução da Frente de Pareto ---
+
 def plot_pareto_size_over_generations(results):
     history = results.get("history", [])
     if not history:
@@ -75,9 +71,8 @@ def plot_pareto_size_over_generations(results):
     print(f"[OK] Convergência da Frente de Pareto guardada em {output}")
 
 
-# =========================
-# Gráfico 2b — Hipervolume por geração
-# =========================
+# --- Gráficos 2b — Hipervolume por geração ---
+
 def plot_hypervolume_over_generations(results):
     history = results.get("history", [])
     if not history or "hypervolume" not in history[0]:
@@ -101,9 +96,8 @@ def plot_hypervolume_over_generations(results):
     print(f"[OK] Hipervolume por geração guardado em {output}")
 
 
-# =========================
-# Gráfico 3 — Distribuição dos Tempos
-# =========================
+# --- Gráficos 3 — Distribuição dos Tempos ---
+
 def plot_time_distribution():
     if not PARETO_CSV.exists():
         return
@@ -124,30 +118,29 @@ def plot_time_distribution():
     print(f"[OK] Distribuição de tempos guardada em {output}")
 
 
-# =========================
-# Gráfico 4 — Compromisso Tempo vs CO₂ (com extremos)
-# =========================
+# --- Gráficos 4 — Compromisso Tempo vs CO₂ (com extremos) ---
+
 def plot_tradeoff_with_extremes(results):
     pareto = results["pareto_front"]
     extremes = results.get("extremes", {})
 
-    times = [s.time for s in pareto]
-    co2s = [s.co2 for s in pareto]
+    times = [s["time"] for s in pareto]
+    co2s = [s["co2"] for s in pareto]
 
     plt.figure()
     plt.scatter(times, co2s, label="Soluções Pareto")
 
     if "best_time" in extremes:
         s = extremes["best_time"]
-        plt.scatter(s.time, s.co2, marker="x", s=100, label="Melhor Tempo")
+        plt.scatter(s["time"], s["co2"], marker="x", s=100, label="Melhor Tempo")
 
     if "best_co2" in extremes:
         s = extremes["best_co2"]
-        plt.scatter(s.time, s.co2, marker="x", s=100, label="Melhor CO₂")
+        plt.scatter(s["time"], s["co2"], marker="x", s=100, label="Melhor CO₂")
 
     if "balanced" in extremes:
         s = extremes["balanced"]
-        plt.scatter(s.time, s.co2, marker="x", s=100, label="Equilibrada")
+        plt.scatter(s["time"], s["co2"], marker="x", s=100, label="Equilibrada")
 
     plt.xlabel("Tempo de Viagem (min)")
     plt.ylabel("Emissões de CO₂ (g)")
@@ -162,9 +155,8 @@ def plot_tradeoff_with_extremes(results):
     print(f"[OK] Gráfico de compromisso guardado em {output}")
 
 
-# =========================
-# Execução Principal
-# =========================
+# --- Execução Principal ---
+
 def main():
     print("\n=== A gerar gráficos para o relatório ===\n")
 

@@ -1,4 +1,21 @@
-# Estrutura do Projeto
+<h3 align="center">Universidade do Minho <br> Mestrado em Inteligência Artificial <br> Computação Inspirada na Natureza <br> 2024/2025 </h3>
+
+---
+
+<h3 align="center"> Colaboradores </h3>
+
+<div align="center">
+
+| Nome                    | Número |
+|-------------------------|--------|
+| Diogo José Borges Dias  | PG60245 |
+| Diogo Lopes Azevedo     | PG61217 |
+
+</div>
+
+---
+
+## Estrutura do Projeto
 
 ```text
 .
@@ -17,14 +34,31 @@
 │   ├── pareto_convergence.png
 │   ├── time_distribution.png
 │   ├── Figure_2.png
-│   └── Figure_1.png
+│   ├── Figure_1.png
+|   ├── graph_spatial.png
+|   └── hypervolume_over_generations.png
 │
-├── src                 # Construção do grafo multimodal
-│   ├── graph.py
+├── output/
+│   ├── graph_base.gpickle
+│   ├── moead_results.pkl
+│   ├── pareto_front.csv
+│   ├── evaluation_results.pkl
+│   ├── evaluation_results.csv
+│   ├── scenarios.pkl
+│   ├── scenarios.csv
+│   └── graph.html
+│
+├── src/                 
+│   ├── graph.py          # Construção do grafo multimodal
 │   ├── moead.py
-│   ├── lines.py
+│   ├── export_graph_html.py
 │   ├── main.py
+│   ├── scenarios.py
+│   ├── evaluate_scenarios.py
+│   ├── interactive_pareto.py
 │   └── visualize.py
+│
+└── README.md
 
 ```
 
@@ -70,6 +104,29 @@ python src/graph.py
 
 O grafo é guardado em `data/output/graph_base.gpickle`.
 
+## Exportação do Grafo para Visualização HTML
+
+O ficheiro `export_graph_html.py` gera uma visualização interativa do grafo multimodal em formato HTML.
+
+**Características principais:**
+
+* Visualização espacial da rede de transportes (Metro + STCP + Rede pedonal)
+* Representação de nós (estações/paragens) e arestas (ligações)
+* Interatividade: zoom, pan, seleção de nós
+* Integração com informações de cada parada
+
+**Execução:**
+
+```bash
+python src/export_graph_html.py
+
+```
+
+**Saída:**
+* `output/graph.html` - Visualização interativa do grafo
+
+---
+
 ## Otimização Multiobjetivo com MOEA/D
 
 O ficheiro `moead.py` contém a implementação do algoritmo MOEA/D, adaptado ao problema de planeamento de percursos em grafos.
@@ -111,6 +168,52 @@ python src/main.py
 * Resultados completos em formato pickle
 * Estatísticas e análises no terminal
 
+## Geração de Cenários de Teste
+
+O ficheiro `scenarios.py` permite gerar cenários de teste representativos para avaliação sistemática do algoritmo.
+
+**Características principais:**
+
+* Geração automática de 12 cenários com 4 níveis de dificuldade
+* Dificuldade baseada em distância geográfica haversine
+* Categorias: fácil (0.5-2.5 km), médio (2.5-5.0 km), difícil (5.0-10.0 km), muito difícil (10.0-20.0 km)
+
+**Execução:**
+
+```bash
+python src/scenarios.py
+
+```
+
+**Saída:**
+* `output/images/scenarios.pkl` - Cenários em formato binário
+* `output/images/scenarios.csv` - Cenários em formato tabular (coordenadas, distâncias)
+
+---
+
+## Avaliação dos cenários
+
+O ficheiro `evaluate_scenarios.py` executa uma avaliação do MOEA/D em todos os 12 cenários.
+
+**Características principais:**
+
+* Testa o algoritmo em condições variadas (diferentes distâncias e complexidade)
+* Coleta métricas agregadas: tamanho da frente de Pareto, tempos min/max/avg, emissões min/max/avg
+* Resumo por nível de dificuldade
+
+**Execução:**
+
+```bash
+python src/evaluate_scenarios.py
+
+```
+
+**Saída:**
+* `output/images/evaluation_results.pkl` - Resultados completos em formato binário
+* `output/images/evaluation_results.csv` - Estatísticas por cenário (tabulado)
+
+---
+
 ## Visualização dos Resultados
 
 O ficheiro `visualize.py` permite gerar os gráficos utilizados na análise experimental e no relatório, incluindo:
@@ -142,7 +245,24 @@ Os principais conceitos abordados incluem:
 * MOEA/D
 * Planeamento de percursos em grafos
 
-## Autores
+## Visualização Interativa de Pareto
 
-* Diogo José Borges Dias
-* Diogo Lopes Azevedo
+O ficheiro `interactive_pareto.py` permite explorar a frente de Pareto gerada de forma interativa.
+
+**Características principais:**
+
+* Visualização web da frente de Pareto
+* Navegação interativa entre soluções
+* Exibição de detalhes de cada rota (tempo, CO₂, modo de transporte)
+
+**Execução:**
+
+```bash
+python src/interactive_pareto.py
+
+```
+
+**Saída:**
+* Interface web para análise interativa dos resultados
+
+---
