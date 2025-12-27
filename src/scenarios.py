@@ -39,10 +39,9 @@ def generate_scenarios(
     """
     if difficulties is None:
         difficulties = {
-            'fácil': (0.5, 2.5),      # 500m - 2.5km
-            'médio': (2.5, 5.0),      # 2.5km - 5km
-            'difícil': (5.0, 10.0),   # 5km - 10km
-            'muito_difícil': (10.0, 20.0)  # 10km - 20km
+            'facil': (0.5, 4.0),      # 500m - 4km
+            'medio': (5.0, 9.0),      # 5km - 9km
+            'dificil': (10.0, 17.0),  # 10km - 17km
         }
     
     scenarios = []
@@ -164,7 +163,7 @@ def print_scenarios_summary(scenarios):
             by_difficulty[diff] = []
         by_difficulty[diff].append(s)
     
-    for difficulty in ['fácil', 'médio', 'difícil', 'muito_difícil']:
+    for difficulty in ['facil', 'medio', 'dificil']:
         if difficulty in by_difficulty:
             count = len(by_difficulty[difficulty])
             distances = [s['air_distance_km'] for s in by_difficulty[difficulty]]
@@ -174,7 +173,7 @@ def print_scenarios_summary(scenarios):
 
 def run_scenario_generation():
     """Script para gerar e guardar cenários."""
-    graph_path = "data/output/graph_base.gpickle"
+    graph_path = "output/graph_base.gpickle"
     if not Path(graph_path).exists():
         print(f"Grafo não encontrado em {graph_path}")
         return
@@ -191,14 +190,13 @@ def run_scenario_generation():
         graph,
         num_scenarios_per_difficulty=3,
         difficulties={
-            'fácil': (0.5, 2.5),
-            'médio': (2.5, 5.0),
-            'difícil': (5.0, 10.0),
-            'muito_difícil': (10.0, 20.0)
+            'facil': (0.5, 3.5),
+            'medio': (4.0, 7.0),
+            'dificil': (8.5, 17.0)
         }
     )
     
-    save_scenarios(scenarios, "output/images/scenarios.pkl")
+    save_scenarios(scenarios, "output/scenarios.pkl")
     
     print_scenarios_summary(scenarios)
 

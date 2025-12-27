@@ -226,11 +226,11 @@ def run_optimization():
     origin = get_coordinates("origem")
     destination = get_coordinates("destino")
     
-    print(f"\n✓ Origem: {origin}")
-    print(f"✓ Destino: {destination}\n")
+    print(f"\nOrigem: {origin}")
+    print(f"Destino: {destination}\n")
     
     # Carregar grafo
-    graph = load_graph("data/output/graph_base.gpickle")
+    graph = load_graph("output/graph_base.gpickle")
     
     # Adicionar origem e destino
     add_virtual_node(graph, "origin", *origin)
@@ -269,8 +269,8 @@ def run_optimization():
     }
     
     print(f"\n{'='*60}\nA EXPORTAR RESULTADOS\n{'='*60}")
-    save_pickle(results, "output/images/moead_results.pkl")
-    save_pareto_csv(pareto_front, graph, "output/images/pareto_front.csv")
+    save_pickle(results, "output/moead_results.pkl")
+    save_pareto_csv(pareto_front, graph, "output/pareto_front.csv")
 
 
 if __name__ == "__main__":

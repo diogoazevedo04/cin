@@ -10,8 +10,8 @@ import pandas as pd
 FIGURES_DIR = Path("figures")
 FIGURES_DIR.mkdir(exist_ok=True)
 
-RESULTS_PKL = Path("data/output/moead_results.pkl")
-PARETO_CSV = Path("data/pareto_front.csv")
+RESULTS_PKL = Path("output/moead_results.pkl")
+PARETO_CSV = Path("output/pareto_front.csv")
 
 
 # --- Utilitários ---

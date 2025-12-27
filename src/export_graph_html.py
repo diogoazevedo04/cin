@@ -160,7 +160,7 @@ def render_html(data, output_path: Path):
 
 
 def main():
-    graph_path = Path("data/output/graph_base.gpickle")
+    graph_path = Path("output/graph_base.gpickle")
     output_path = Path("output/graph.html")
     G = load_graph(graph_path)
     data = graph_to_data(G)

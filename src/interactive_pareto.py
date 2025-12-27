@@ -6,7 +6,7 @@ from matplotlib.widgets import Button
 class InteractiveParetoExplorer:
     """Explorador interativo da Frente de Pareto."""
     
-    def __init__(self, results_path: str = "data/output/moead_results.pkl"):
+    def __init__(self, results_path: str = "output/moead_results.pkl"):
         self.results_path = Path(results_path)
         if not self.results_path.exists():
             raise FileNotFoundError(f"Resultados não encontrados: {self.results_path}")

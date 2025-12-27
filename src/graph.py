@@ -165,4 +165,10 @@ def build_graph() -> None:
     load_gtfs_edges(graph, "data/gtfs/stcp/stop_times.txt", "bus", CO2_BUS)
     add_walk_edges(graph)
     
-    save_graph(graph, "data/output/graph_base.gpickle")
+    save_graph(graph, "output/graph_base.gpickle")
+
+
+if __name__ == "__main__":
+    print("\nA construir grafo multimodal (Metro + STCP + pedonal)...")
+    build_graph()
+    print("✓ Grafo criado em output/graph_base.gpickle")

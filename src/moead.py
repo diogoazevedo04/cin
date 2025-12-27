@@ -14,7 +14,7 @@ POPULATION_SIZE=100
 N_NEIGHBORS=20
 MAX_GENERATIONS=50
 MUTATION_RATE=0.8
-CROSSOVER_RATE=1.0
+CROSSOVER_RATE=0.8
 
 def get_edge(G, u, v, score = None):
     """Seleciona a aresta entre u e v em MultiDiGraph.
