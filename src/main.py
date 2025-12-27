@@ -1,254 +1,286 @@
 import csv
 import pickle
-import logging
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 import networkx as nx
 
-from moead import MOEAD, analyze_pareto_front
+from moead import optimize_moead, get_extreme_solutions, analyze_pareto_front, get_edge
 
-# Configuração de Logging simples
-logging.basicConfig(level=logging.INFO, format="%(message)s")
-logger = logging.getLogger(__name__)
+# ==============================
+# Funções de Rede
+# ==============================
 
-class TransportNetwork:
-    """
-    Responsável por gerir a topologia da rede de transportes, 
-    incluindo cálculos geográficos e manipulação de nós virtuais.
-    """
+def load_graph(graph_path: str) -> nx.DiGraph:
+    """Carrega o grafo a partir de um ficheiro pickle."""
+    path = Path(graph_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Grafo não encontrado em: {path}")
     
-    def __init__(self, graph_path: str):
-        self.graph_path = Path(graph_path)
-        self.G: nx.DiGraph = self._load_graph()
-
-    def _load_graph(self) -> nx.DiGraph:
-        if not self.graph_path.exists():
-            raise FileNotFoundError(f"Grafo não encontrado em: {self.graph_path}")
-        
-        logger.info("A carregar grafo base...")
-        with open(self.graph_path, "rb") as f:
-            G = pickle.load(f)
-        return G
-
-    @staticmethod
-    def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-        """Calcula distância do grande círculo em km."""
-        R = 6371
-        dlat = radians(lat2 - lat1)
-        dlon = radians(lon2 - lon1)
-        a = sin(dlat / 2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2)**2
-        c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return R * c
-
-    @staticmethod
-    def _walking_time(dist_km: float, speed_kmh: float = 4.5) -> float:
-        """Calcula tempo de caminhada em minutos + penalidade fixa."""
-        return (dist_km / speed_kmh) * 60 + 3.0
-
-    def add_virtual_node(self, node_id: str, lat: float, lon: float, k_neighbors: int = 15):
-        """Adiciona um ponto de interesse (origem/destino) conectado aos K vizinhos mais próximos."""
-        self.G.add_node(node_id, lat=lat, lon=lon, modo="walk")
-        
-        distances = []
-        for n, data in self.G.nodes(data=True):
-            if n == node_id: continue
-            d = self.haversine(lat, lon, data["lat"], data["lon"])
-            distances.append((d, n))
-        
-        distances.sort()
-        
-        # Ligar aos k mais próximos
-        for dist_km, n in distances[:k_neighbors]:
-            t = self._walking_time(dist_km) + 5.0 # Penalização transbordo
-            attrs = {"modo": "walk", "distance_km": dist_km, "time_min": t, "co2": 0}
-            self.G.add_edge(node_id, n, **attrs)
-            self.G.add_edge(n, node_id, **attrs)
-
-    def add_direct_shortcut(self, node_a: str, node_b: str):
-        """Cria uma ligação direta a pé entre dois nós (fallback)."""
-        if not self.G.has_node(node_a) or not self.G.has_node(node_b):
-            return
-
-        lat1, lon1 = self.G.nodes[node_a]["lat"], self.G.nodes[node_a]["lon"]
-        lat2, lon2 = self.G.nodes[node_b]["lat"], self.G.nodes[node_b]["lon"]
-        
-        dist = self.haversine(lat1, lon1, lat2, lon2) * 1.3 # Fator tortuosidade
-        time_walk = self._walking_time(dist)
-        
-        attrs = {"modo": "walk", "time_min": time_walk, "distance_km": dist, "co2": 0.0}
-        self.G.add_edge(node_a, node_b, **attrs)
-        self.G.add_edge(node_b, node_a, **attrs)
-        logger.info(f"Ligação direta criada: {dist:.2f} km")
-
-    def get_stats(self) -> str:
-        return f"{self.G.number_of_nodes()} nós | {self.G.number_of_edges()} arestas"
+    with open(path, "rb") as f:
+        return pickle.load(f)
 
 
-class SolutionAnalyzer:
-    """
-    Responsável por analisar soluções, gerar relatórios e formatar saídas.
-    """
-    def __init__(self, graph: nx.DiGraph):
-        self.G = graph
+def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calcula distância do grande círculo em km."""
+    R = 6371
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return R * c
 
-    def _get_walk_distance(self, path: List[str]) -> float:
-        return sum(
-            self.G[u][v]['distance_km'] 
-            for u, v in zip(path[:-1], path[1:]) 
-            if self.G[u][v]['modo'] == 'walk'
-        )
 
-    def print_solution_details(self, sol, name: str = "Solução"):
-        print(f"\n{'='*60}\n{name.upper()}\n{'='*60}")
-        print(f"Tempo total: {sol.time:.1f} min")
-        print(f"CO₂ total: {sol.co2:.0f} g")
-        print(f"Paragens: {len(sol.path)}")
-        
-        walk_dist = self._get_walk_distance(sol.path)
-        print(f"Distância a pé: {walk_dist:.2f} km")
-        
-        # Segmentação simplificada para exibição
-        print(f"\nDetalhes da viagem:")
-        current_mode = None
-        group_start = sol.path[0]
-        
-        for i, (u, v) in enumerate(zip(sol.path[:-1], sol.path[1:])):
-            mode = self.G[u][v]['modo']
-            if mode != current_mode:
-                if current_mode:
-                    print(f"   via {current_mode.upper()} até {u}")
+def walking_time(dist_km: float, speed_kmh: float = 5.0) -> float:
+    """Calcula tempo de caminhada em minutos."""
+    return (dist_km / speed_kmh) * 60
+
+
+def add_virtual_node(graph: nx.DiGraph, node_id: str, lat: float, lon: float, k_neighbors: int = 15):
+    """Adiciona um ponto de interesse conectado aos K vizinhos mais próximos."""
+    graph.add_node(node_id, lat=lat, lon=lon, modo="walk")
+    
+    distances = []
+    for n, data in graph.nodes(data=True):
+        if n == node_id: 
+            continue
+        d = haversine(lat, lon, data["lat"], data["lon"])
+        distances.append((d, n))
+    
+    distances.sort()
+    
+    for dist_km, n in distances[:k_neighbors]:
+        neighbor_mode = graph.nodes[n].get("modo")
+        transfer_penalty = 1.0 if neighbor_mode in {"metro", "bus"} else 0.0
+        t = walking_time(dist_km) + transfer_penalty
+        attrs = {"modo": "walk", "distance_km": dist_km, "time_min": t, "co2": 0}
+        graph.add_edge(node_id, n, **attrs)
+        graph.add_edge(n, node_id, **attrs)
+
+
+def add_direct_shortcut(graph: nx.DiGraph, node_a: str, node_b: str):
+    """Cria uma ligação direta a pé entre dois nós."""
+    if not graph.has_node(node_a) or not graph.has_node(node_b):
+        return
+    
+    lat1, lon1 = graph.nodes[node_a]["lat"], graph.nodes[node_a]["lon"]
+    lat2, lon2 = graph.nodes[node_b]["lat"], graph.nodes[node_b]["lon"]
+    
+    dist = haversine(lat1, lon1, lat2, lon2) * 1.2
+    time_walk = walking_time(dist)
+    
+    attrs = {"modo": "walk", "time_min": time_walk, "distance_km": dist, "co2": 0.0}
+    graph.add_edge(node_a, node_b, **attrs)
+    graph.add_edge(node_b, node_a, **attrs)
+
+
+# ==============================
+# Funções de Análise
+# ==============================
+
+def get_mode_breakdown(path: List[str], graph: nx.DiGraph, edges: List[Dict] = None) -> Dict[str, Dict[str, float]]:
+    """Agrega tempo, distância e contagem de arestas por modo."""
+    totals = {
+        'walk': {'time': 0.0, 'dist': 0.0, 'edges': 0},
+        'metro': {'time': 0.0, 'dist': 0.0, 'edges': 0},
+        'bus': {'time': 0.0, 'dist': 0.0, 'edges': 0},
+    }
+    
+    if edges:
+        for e in edges:
+            m = e.get('modo', 'walk')
+            if m not in totals:
+                totals[m] = {'time': 0.0, 'dist': 0.0, 'edges': 0}
+            totals[m]['time'] += float(e.get('time_min', 0.0))
+            totals[m]['dist'] += float(e.get('distance_km', 0.0))
+            totals[m]['edges'] += 1
+    else:
+        for u, v in zip(path[:-1], path[1:]):
+            e = get_edge(graph, u, v)
+            m = e.get('modo', 'walk')
+            if m not in totals:
+                totals[m] = {'time': 0.0, 'dist': 0.0, 'edges': 0}
+            totals[m]['time'] += float(e.get('time_min', 0.0))
+            totals[m]['dist'] += float(e.get('distance_km', 0.0))
+            totals[m]['edges'] += 1
+    
+    return totals
+
+def segment_path(path: List[str], graph: nx.DiGraph, edges: List[Dict] = None) -> List[Tuple[str, str, str, float, float]]:
+    """Divide o caminho em segmentos contíguos por modo."""
+    if not path or len(path) < 2:
+        return []
+    
+    segments = []
+    current_mode = None
+    seg_start = path[0]
+    acc_time = 0.0
+    acc_dist = 0.0
+    
+    if edges:
+        for i, e in enumerate(edges):
+            mode = e.get('modo')
+            time_min = float(e.get('time_min', 0.0))
+            dist_km = float(e.get('distance_km', 0.0))
+            
+            if current_mode is None:
                 current_mode = mode
-                print(f"{mode.upper()} de {u}...", end="")
-        print(f" até {sol.path[-1]}")
-
-    def print_comparison(self, solutions_dict: Dict[str, Any]):
-        print(f"\n{'='*60}\nCOMPARAÇÃO DE SOLUÇÕES\n{'='*60}\n")
-        print(f"{'Critério':<15} {'Tempo':<15} {'CO₂':<15} {'A pé (km)':<15}")
-        print("-" * 60)
-        
-        for name, sol in solutions_dict.items():
-            walk_dist = self._get_walk_distance(sol.path)
-            print(f"{name:<15} {sol.time:<15.1f} {sol.co2:<15.0f} {walk_dist:<15.2f}")
-
-
-class DataManager:
-    """
-    Responsável pela persistência dos dados (Salvar/Carregar).
-    """
-    @staticmethod
-    def save_pickle(data: Any, filepath: str):
-        path = Path(filepath)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
-        logger.info(f"Dados salvos em: {filepath}")
-
-    @staticmethod
-    def save_pareto_csv(pareto_front: List[Any], graph: nx.DiGraph, filepath: str):
-        path = Path(filepath)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(path, "w", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['time_min', 'co2_g', 'path_length', 'walk_distance_km'])
-            
-            for sol in pareto_front:
-                walk_dist = sum(
-                    graph[u][v]['distance_km'] 
-                    for u, v in zip(sol.path[:-1], sol.path[1:])
-                    if graph[u][v]['modo'] == 'walk'
-                )
-                writer.writerow([sol.time, sol.co2, len(sol.path), walk_dist])
-        logger.info(f"CSV salvo em: {filepath}")
-
-
-class RouteOptimizationApp:
-    """
-    Classe principal (Facade) que orquestra todo o processo.
-    """
+            if mode != current_mode:
+                segments.append((current_mode, seg_start, path[i], acc_time, acc_dist))
+                current_mode = mode
+                seg_start = path[i]
+                acc_time = 0.0
+                acc_dist = 0.0
+            acc_time += time_min
+            acc_dist += dist_km
+        segments.append((current_mode, seg_start, path[-1], acc_time, acc_dist))
+    else:
+        for u, v in zip(path[:-1], path[1:]):
+            edge = get_edge(graph, u, v)
+            mode = edge.get('modo')
+            time_min = float(edge.get('time_min', 0.0))
+            dist_km = float(edge.get('distance_km', 0.0))
+            if current_mode is None:
+                current_mode = mode
+            if mode != current_mode:
+                segments.append((current_mode, seg_start, u, acc_time, acc_dist))
+                current_mode = mode
+                seg_start = u
+                acc_time = 0.0
+                acc_dist = 0.0
+            acc_time += time_min
+            acc_dist += dist_km
+        segments.append((current_mode, seg_start, path[-1], acc_time, acc_dist))
     
-    def __init__(self):
-        # Configurações
-        self.origin = (41.3616, -8.7541)  # Trindade
-        self.destination = (41.1608, -8.6843)  # FEUP
-        self.pop_size = 100
-        self.generations = 50
+    return segments
+
+
+def print_solution_details(sol, graph: nx.DiGraph, name: str = "Solução"):
+    """Imprime detalhes de uma solução."""
+    edges = getattr(sol, "edges", None)
+    print(f"\n{'='*60}\n{name.upper()}\n{'='*60}")
+    print(f"Tempo total: {sol.time:.1f} min")
+    print(f"CO₂ total: {sol.co2:.0f} g")
+    print(f"Paragens: {len(sol.path)}")
+    
+    walk_dist = sum(e.get('distance_km', 0.0) for e in edges if e.get('modo') == 'walk') if edges else 0.0
+    breakdown = get_mode_breakdown(sol.path, graph, edges)
+    print(f"Distância a pé: {walk_dist:.2f} km")
+    print("\nResumo por modo:")
+    for m in ['walk', 'metro', 'bus']:
+        t = breakdown.get(m, {}).get('time', 0.0)
+        d = breakdown.get(m, {}).get('dist', 0.0)
+        e = breakdown.get(m, {}).get('edges', 0)
+        if e:
+            print(f" - {m.upper()}: {t:.1f} min | {d:.2f} km | {e} arestas")
+    
+    print(f"\nSegmentos:")
+    for mode, a, b, tmin, dkm in segment_path(sol.path, graph, edges):
+        print(f" - {mode.upper()}: {a} → {b} | {tmin:.1f} min | {dkm:.2f} km")
+
+
+def print_comparison(solutions_dict: Dict[str, Any]):
+    """Imprime tabela comparativa de soluções."""
+    print(f"\n{'='*60}\nCOMPARAÇÃO DE SOLUÇÕES\n{'='*60}\n")
+    print(f"{'Critério':<15} {'Tempo':<15} {'CO₂':<15} {'A pé (km)':<15}")
+    print("-" * 60)
+    
+    for name, sol in solutions_dict.items():
+        edges = getattr(sol, "edges", None)
+        walk_dist = sum(e.get('distance_km', 0.0) for e in edges if e.get('modo') == 'walk') if edges else 0.0
+        print(f"{name:<15} {sol.time:<15.1f} {sol.co2:<15.0f} {walk_dist:<15.2f}")
+
+
+# ==============================
+# Funções de Persistência
+# ==============================
+
+def save_pickle(data: Any, filepath: str):
+    """Guarda dados em formato pickle."""
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(data, f)
+
+def save_pareto_csv(pareto_front: List[Any], graph: nx.DiGraph, filepath: str):
+    """Guarda frente de Pareto em formato CSV."""
+    path = Path(filepath)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(path, "w", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['time_min', 'co2_g', 'path_length', 'walk_distance_km'])
         
-        # Inicialização de componentes
-        self.network = TransportNetwork("data/output/graph_base.gpickle")
-        self.analyzer = SolutionAnalyzer(self.network.G)
-        self.data_manager = DataManager()
+        for sol in pareto_front:
+            walk_dist = sum(
+                get_edge(graph, u, v)['distance_km'] 
+                for u, v in zip(sol.path[:-1], sol.path[1:])
+                if get_edge(graph, u, v)['modo'] == 'walk'
+            )
+            writer.writerow([sol.time, sol.co2, len(sol.path), walk_dist])
 
-    def setup_route_endpoints(self):
-        """Configura os nós de origem e destino na rede."""
-        logger.info("\n Configurando origem e destino...")
-        self.network.add_virtual_node("origin", *self.origin)
-        self.network.add_virtual_node("destination", *self.destination)
-        self.network.add_direct_shortcut("origin", "destination")
-        logger.info(f"Estado da Rede: {self.network.get_stats()}")
 
-    def run_optimization(self):
-        """Executa o algoritmo MOEA/D."""
-        self.moead = MOEAD(
-            G=self.network.G,
-            source="origin",
-            target="destination",
-            population_size=self.pop_size,
-            n_neighbors=20,
-            max_generations=self.generations
-        )
-        self.pareto_front = self.moead.optimize()
-        self.extremes = self.moead.get_extreme_solutions()
+# ==============================
+# Função Principal
+# ==============================
 
-    def generate_reports(self):
-        """Gera e exibe análises na consola."""
-        analyze_pareto_front(self.pareto_front, self.network.G)
-        
-        if self.extremes:
-            labels = {
-                'best_time': "Melhor Tempo",
-                'best_co2': "Melhor CO₂",
-                'balanced': "Balanceada"
-            }
-            
-            # Análise detalhada
-            for key, label in labels.items():
-                if key in self.extremes:
-                    self.analyzer.print_solution_details(self.extremes[key], label)
-            
-            # Tabela comparativa
-            solutions_to_compare = {labels[k]: v for k, v in self.extremes.items()}
-            self.analyzer.print_comparison(solutions_to_compare)
-
-    def save_results(self):
-        """Exporta os resultados finais."""
-        results = {
-            'pareto_front': self.pareto_front,
-            'extremes': self.extremes,
-            'history': self.moead.history,
-            'config': {
-                'origin': self.origin,
-                'destination': self.destination
-            }
+def run_optimization():
+    """Pipeline completo de otimização."""
+    # Configuração
+    origin = (41.1768, -8.6936)  # Aliados
+    destination = (41.1297, -8.6065)  # Casa da Música
+    pop_size = 100
+    generations = 50
+    
+    # Carregar grafo
+    graph = load_graph("data/output/graph_base.gpickle")
+    
+    # Adicionar origem e destino
+    add_virtual_node(graph, "origin", *origin)
+    add_virtual_node(graph, "destination", *destination)
+    
+    # Executar MOEA/D
+    pareto_front, extremes, history = optimize_moead(
+        graph=graph,
+        source="origin",
+        target="destination",
+        population_size=pop_size,
+        n_neighbors=20,
+        max_generations=generations
+    )
+    
+    # Análise e relatórios
+    analyze_pareto_front(pareto_front, graph)
+    
+    if extremes:
+        labels = {
+            'best_time': "Melhor Tempo",
+            'best_co2': "Melhor CO₂",
+            'balanced': "Balanceada"
         }
         
-        print(f"\n{'='*60}\nEXPORTANDO RESULTADOS\n{'='*60}")
-        self.data_manager.save_pickle(results, "data/output/moead_results.pkl")
-        self.data_manager.save_pareto_csv(self.pareto_front, self.network.G, "data/pareto_front.csv")
-
-    def run(self):
-        """Pipeline de execução."""
-        try:
-            self.setup_route_endpoints()
-            self.run_optimization()
-            self.generate_reports()
-            self.save_results()
-            logger.info("\n Processo completo com sucesso!")
-        except Exception as e:
-            logger.error(f"Erro crítico na execução: {e}", exc_info=True)
+        for key, label in labels.items():
+            if key in extremes:
+                print_solution_details(extremes[key], graph, label)
+        
+        solutions_to_compare = {labels[k]: v for k, v in extremes.items()}
+        print_comparison(solutions_to_compare)
+    
+    # Exportar resultados
+    results = {
+        'pareto_front': pareto_front,
+        'extremes': extremes,
+        'history': history,
+        'config': {
+            'origin': origin,
+            'destination': destination
+        }
+    }
+    
+    print(f"\n{'='*60}\nEXPORTANDO RESULTADOS\n{'='*60}")
+    save_pickle(results, "data/output/moead_results.pkl")
+    save_pareto_csv(pareto_front, graph, "data/pareto_front.csv")
 
 
 if __name__ == "__main__":
-    app = RouteOptimizationApp()
-    app.run()
+    run_optimization()

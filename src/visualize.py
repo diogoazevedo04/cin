@@ -76,6 +76,32 @@ def plot_pareto_size_over_generations(results):
 
 
 # =========================
+# Gráfico 2b — Hipervolume por geração
+# =========================
+def plot_hypervolume_over_generations(results):
+    history = results.get("history", [])
+    if not history or "hypervolume" not in history[0]:
+        print("[WARN] Histórico sem hipervolume — gráfico ignorado")
+        return
+
+    generations = [h["generation"] for h in history]
+    hv = [h.get("hypervolume", 0.0) for h in history]
+
+    plt.figure()
+    plt.plot(generations, hv)
+    plt.xlabel("Geração")
+    plt.ylabel("Hipervolume")
+    plt.title("Hipervolume ao Longo das Gerações")
+    plt.grid(True)
+
+    output = FIGURES_DIR / "hypervolume_over_generations.png"
+    plt.savefig(output, dpi=300, bbox_inches="tight")
+    plt.close()
+
+    print(f"[OK] Hipervolume por geração guardado em {output}")
+
+
+# =========================
 # Gráfico 3 — Distribuição dos Tempos
 # =========================
 def plot_time_distribution():
@@ -146,6 +172,7 @@ def main():
 
     plot_pareto_front()
     plot_pareto_size_over_generations(results)
+    plot_hypervolume_over_generations(results)
     plot_time_distribution()
     plot_tradeoff_with_extremes(results)
 
