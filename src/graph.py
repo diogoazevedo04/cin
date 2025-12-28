@@ -19,7 +19,7 @@ CO2_BUS = 109.9 # g/km
 # --- Funções Auxiliares ---
 
 def haversine(lat1, lon1, lat2, lon2):
-    """Calcula a distância do grande círculo entre dois pontos em km."""
+    """Calcula a distância entre dois pontos em km."""
     R = 6371
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -145,8 +145,7 @@ def add_walk_edges(graph):
                 graph.add_edge(v, u, **attrs)
         
 
-def save_graph(graph: nx.MultiDiGraph, output_path: str) -> None:
-    """Serializa o grafo para disco usando pickle."""
+def save_graph(graph, output_path):
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -155,7 +154,6 @@ def save_graph(graph: nx.MultiDiGraph, output_path: str) -> None:
 
 
 def build_graph() -> None:
-    """Executa o pipeline completo de construção do grafo."""
     graph = nx.MultiDiGraph()
     
     load_stops(graph, "data/gtfs/mdp/stops.txt", "metro")
@@ -171,4 +169,4 @@ def build_graph() -> None:
 if __name__ == "__main__":
     print("\nA construir grafo multimodal (Metro + STCP + pedonal)...")
     build_graph()
-    print("✓ Grafo criado em output/graph_base.gpickle")
+    print("Grafo criado em output/graph_base.gpickle")

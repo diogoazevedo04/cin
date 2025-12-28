@@ -1,6 +1,5 @@
 import random
 from collections import defaultdict
-from typing import List, Tuple, Dict, Callable, Optional
 
 import networkx as nx
 import numpy as np
@@ -17,10 +16,10 @@ MUTATION_RATE=0.8
 CROSSOVER_RATE=0.8
 
 def get_edge(G, u, v, score = None):
-    """Seleciona a aresta entre u e v em MultiDiGraph.
-
+    """Seleciona a aresta entre u e v no MultiDiGraph.
     Se existir mais do que uma aresta entre o par (u, v),
-    escolhe a aresta que minimiza o "score" fornecido. Na ausência de score,
+    escolhe a aresta que minimiza o "score" fornecido. 
+    Na ausência de score,
     escolhe a aresta com menor tempo ("time_min").
     """
     def pick_best_edge(edge_dict):
@@ -67,7 +66,7 @@ def create_solution(path, time, co2, violation= 0.0, edges = None, weights = Non
 # --- Funções de Inicialização ---
 
 def generate_weights(population_size):
-    """Gera vetores de peso lineares para decomposição."""
+    """Gera vetores de peso lineares para a decomposição."""
     return np.array(
         [[i / (population_size - 1), 1 - i / (population_size - 1)]
          for i in range(population_size)]
@@ -99,11 +98,7 @@ def evaluate_path(
     walk_time_penalty=WALK_TIME_PENALTY,
     edge_score=None
 ):
-    """Calcula tempo, CO2 e violação de restrições.
-
-    edge_score: função opcional para selecionar, em grafos MultiDiGraph,
-    a aresta entre dois nós quando existem múltiplas arestas paralelas.
-    """
+    """Calcula tempo, CO2 e violação de restrições."""
     time = 0.0
     co2 = 0.0
     walk_time = 0.0
@@ -148,7 +143,7 @@ def heuristic_initialization(
     transfer_penalty = TRANSFER_PENALTY,
     walk_time_penalty = WALK_TIME_PENALTY
 ):
-    """Inicialização heurística com shortest path ponderado."""
+    """Inicialização heurística com Dijkstra."""
     solutions = []
 
     times = [d["time_min"] for _, _, d in graph.edges(data=True)]
@@ -157,7 +152,7 @@ def heuristic_initialization(
     max_time = max(times) if times else 1.0
     max_co2 = max(co2s) if co2s else 1.0
 
-    for w_time, w_co2 in weights:  # Usa todos os pesos
+    for w_time, w_co2 in weights:
         try:
             def cost(u, v, d):
                 return (
@@ -166,7 +161,6 @@ def heuristic_initialization(
                 )
 
             path = nx.shortest_path(graph, source, target, weight=cost)
-            # Seleciona arestas paralelas com o mesmo custo ponderado usado na busca
             edge_score = lambda d: (w_time * d.get("time_min", 0.0) / max_time +
                                     w_co2 * d.get("co2", 0.0) / max_co2)
             t, c, viol, edges = evaluate_path(
@@ -180,7 +174,6 @@ def heuristic_initialization(
 
     while len(solutions) < population_size and solutions:  # 100 soluções
         base = random.choice(solutions)
-        # usa os pesos da solução base para orientar a mutação e avaliação
         b_w = base.get("weights") or (0.5, 0.5)
         edge_score_b = lambda d: (b_w[0] * d.get("time_min", 0.0) / max_time +
                                   b_w[1] * d.get("co2", 0.0) / max_co2)
@@ -269,7 +262,7 @@ def mutate(path, graph, rate = MUTATION_RATE, edge_score = None):
 
 
 def crossover(p1, p2, rate = CROSSOVER_RATE):
-    """Cruzamento por nó comum com probabilidade controlada."""
+    """Cruzamento por nó comum com probabilidade CROSSOVER_RATE."""
     if random.random() > rate:
         return random.choice([p1, p2])
 
@@ -282,23 +275,10 @@ def crossover(p1, p2, rate = CROSSOVER_RATE):
         return p1[: p1.index(n)] + p2[p2.index(n):]
     except ValueError:
         return random.choice([p1, p2])
-    
-'''
-def repair_path(path):
-    """Remove ciclos mantendo primeira ocorrência de cada nó."""
-    seen = set()
-    repaired = []
-    for node in path:
-        if node not in seen:
-            repaired.append(node)
-            seen.add(node)
-    return repaired
-'''
 
 # --- Funções de Otimização ---
 
 def tchebycheff(obj, w, ref):
-    """Agregação Tchebycheff."""
     return np.max(w * np.abs(obj - ref))
 
 
@@ -330,7 +310,7 @@ def update_pareto(pareto_front, sol):
 def prune_pareto_epsilon(pareto_front, epsilon_time = 0.3, epsilon_co2 = 1.0):
     """Remove soluções redundantes (epsilon-dominance).
     
-    Ordena por compromisso normalizado (não só por tempo) para evitar viés
+    Ordena por compromisso normalizado para evitar viés
     e manter melhor diversidade na frente de Pareto.
     """
     if len(pareto_front) <= 1:
@@ -360,8 +340,8 @@ def prune_pareto_epsilon(pareto_front, epsilon_time = 0.3, epsilon_co2 = 1.0):
     return pruned
 
 
-def hypervolume_2d(front, ref):
-    """Hipervolume 2D para minimização."""
+def hypervolume(front, ref):
+    """Hipervolume para minimização."""
     if not front:
         return 0.0
     
@@ -388,7 +368,7 @@ def collect_generation_metrics(generation, pareto_front, hv_ref):
     times_pareto = [s["time"] for s in pareto_front] or [0.0]
     co2s_pareto = [s["co2"] for s in pareto_front] or [0.0]
     
-    hv = hypervolume_2d(pareto_front, hv_ref)
+    hv = hypervolume(pareto_front, hv_ref)
 
     return {
         "generation": generation,
@@ -470,7 +450,6 @@ def moead(
         (max(co2s_all) if co2s_all else 1.0) * 1.1
     )
 
-    # Pré-cálculo para normalização dos atributos das arestas
     edge_times = [d.get("time_min", 0.0) for _, _, d in graph.edges(data=True)]
     edge_co2s = [d.get("co2", 0.0) for _, _, d in graph.edges(data=True)]
     max_edge_time = max(edge_times) if edge_times else 1.0
@@ -547,8 +526,8 @@ def moead(
     return pareto_front, extremes, history
 
 
-def get_extreme_solutions(pareto_front: List[Dict]) -> Dict[str, Dict]:
-    """Retorna soluções extremas do Pareto."""
+def get_extreme_solutions(pareto_front):
+    """Retorna soluções extremas do Pareto(melhor tempo, melhor CO2 e balanceado)."""
     if not pareto_front:
         return {}
 

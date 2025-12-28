@@ -1,19 +1,13 @@
-"""
-Gerador de cenários de teste com diferentes níveis de dificuldade.
-Usa random walk no grafo para gerar pares origem-destino.
-"""
-
 import random
 import pickle
 import csv
 from pathlib import Path
 from math import radians, sin, cos, sqrt, atan2
-from typing import List, Tuple, Dict, Any
 import networkx as nx
 
 
 def haversine(lat1, lon1, lat2, lon2):
-    """Calcula distância do grande círculo em km."""
+    """Calcula distância em km."""
     R = 6371
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)
@@ -28,13 +22,6 @@ def generate_scenarios(
 ):
     """
     Gera cenários selecionando pares de nós filtrados por distância aérea.
-    
-    Parâmetros:
-    - graph: NetworkX DiGraph
-    - num_scenarios_per_difficulty: quantos cenários por nível (default: 3)
-    - difficulties: dict com {nome: (dist_min_km, dist_max_km)}
-      ex: {'fácil': (0.5, 2.5), 'médio': (2.5, 5.0), ...}
-    
     Retorna: lista de cenários, cada um com (origem, destino, dificuldade, distância_aérea)
     """
     if difficulties is None:
@@ -110,7 +97,7 @@ def save_scenarios(scenarios, filepath):
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump(scenarios, f)
-    print(f"\n✓ {len(scenarios)} cenários guardados em {filepath}")
+    print(f"\n{len(scenarios)} cenários guardados em {filepath}")
     
     csv_path = path.parent / "scenarios.csv"
     with open(csv_path, "w", newline='') as f:
@@ -142,7 +129,7 @@ def load_scenarios(filepath):
     
     with open(path, "rb") as f:
         scenarios = pickle.load(f)
-    print(f"✓ {len(scenarios)} cenários carregados de {filepath}")
+    print(f"{len(scenarios)} cenários carregados de {filepath}")
     return scenarios
 
 
@@ -172,7 +159,6 @@ def print_scenarios_summary(scenarios):
 
 
 def run_scenario_generation():
-    """Script para gerar e guardar cenários."""
     graph_path = "output/graph_base.gpickle"
     if not Path(graph_path).exists():
         print(f"Grafo não encontrado em {graph_path}")

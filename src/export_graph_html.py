@@ -2,7 +2,6 @@ import json
 import pickle
 from pathlib import Path
 
-
 def load_graph(graph_path: Path):
     if not graph_path.exists():
         raise FileNotFoundError(f"Grafo não encontrado: {graph_path}")
@@ -14,7 +13,6 @@ def graph_to_data(G):
     nodes = []
     edges = []
 
-    # Map numeric index for JS
     id_map = {}
     for idx, (n, d) in enumerate(G.nodes(data=True)):
         id_map[n] = idx
@@ -40,7 +38,6 @@ def graph_to_data(G):
             "co2": float(data.get("co2", 0.0)),
         })
 
-    # Center map around average
     if nodes:
         avg_lat = sum(n["lat"] for n in nodes) / len(nodes)
         avg_lon = sum(n["lon"] for n in nodes) / len(nodes)
