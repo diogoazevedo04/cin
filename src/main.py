@@ -23,7 +23,7 @@ def load_graph(graph_path):
 
 
 def haversine(lat1, lon1, lat2, lon2):
-    """Calcula distância do grande círculo em km."""
+    """Calcula distância em km."""
     R = 6371
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)

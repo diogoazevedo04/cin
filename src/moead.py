@@ -282,24 +282,17 @@ def crossover(p1, p2, rate = CROSSOVER_RATE):
         return p1[: p1.index(n)] + p2[p2.index(n):]
     except ValueError:
         return random.choice([p1, p2])
-    
-'''
-def repair_path(path):
-    """Remove ciclos mantendo primeira ocorrência de cada nó."""
-    seen = set()
-    repaired = []
-    for node in path:
-        if node not in seen:
-            repaired.append(node)
-            seen.add(node)
-    return repaired
-'''
 
 # --- Funções de Otimização ---
 
 def tchebycheff(obj, w, ref):
     """Agregação Tchebycheff."""
     return np.max(w * np.abs(obj - ref))
+
+def tchebycheff2(obj, w, ref, obj_max):
+    """Agregação Tchebycheff com normalização."""
+    normalized = np.abs(obj - ref) / (obj_max + 1e-9)
+    return np.max(w * normalized)
 
 
 def update_reference(population):
@@ -506,9 +499,11 @@ def moead(
             )
             child = create_solution(child_path, t, c, viol, edges)
 
-            for j in neighbors:
-                child_scalar = tchebycheff(np.array([child["time"], child["co2"]]), weights[j], ref) + child["violation"]
-                curr_scalar = tchebycheff(np.array([population[j]["time"], population[j]["co2"]]), weights[j], ref) + population[j]["violation"]
+            update_targets = set(neighbors + [i])
+            for j in update_targets:
+                obj_max = np.array([max_edge_time, max_edge_co2])
+                child_scalar = tchebycheff2(np.array([child["time"], child["co2"]]), weights[j], ref, obj_max) + child["violation"]
+                curr_scalar = tchebycheff2(np.array([population[j]["time"], population[j]["co2"]]), weights[j], ref, obj_max) + population[j]["violation"]
                 if child_scalar < curr_scalar:
                     population[j] = child
 

@@ -69,7 +69,7 @@ def run_full_evaluation(num_scenarios=None):
     Se cenários não existem, gera-os automaticamente.
     """
     # Carrega grafo
-    graph_path = "data/output/graph_base.gpickle"
+    graph_path = "output/graph_base.gpickle"
     if not Path(graph_path).exists():
         print(f"Grafo não encontrado em {graph_path}")
         return
@@ -78,22 +78,21 @@ def run_full_evaluation(num_scenarios=None):
         graph = pickle.load(f)
     
     # Carrega cenários ou gera-os se não existem
-    scenarios_path = "output/images/scenarios.pkl"
+    scenarios_path = "output/scenarios.pkl"
     if not Path(scenarios_path).exists():
         print(f"\nCenários não encontrados. Gerando...")
         scenarios = generate_scenarios(
             graph,
             num_scenarios_per_difficulty=3,
             difficulties={
-                'fácil': (0.5, 2.5),
-                'médio': (2.5, 5.0),
-                'difícil': (5.0, 10.0),
-                'muito_difícil': (10.0, 20.0)
+                'fácil': (0.5, 4.0),
+                'médio': (5.0, 9.0),
+                'difícil': (10.0, 17.0),
             }
         )
-        save_scenarios(scenarios, scenarios_path)  # Guarda em output/images/
+        save_scenarios(scenarios, scenarios_path)  # Guarda em output/scenarios.pkl
     else:
-        scenarios = load_scenarios(scenarios_path)  # Carrega de output/images/
+        scenarios = load_scenarios(scenarios_path)  # Carrega de output/scenarios.pkl
     
     if num_scenarios:
         scenarios = scenarios[:num_scenarios]
@@ -125,13 +124,13 @@ def run_full_evaluation(num_scenarios=None):
 
 def save_evaluation_results(results):
     """Guarda resultados em CSV e pickle."""
-    path = Path("output/images/evaluation_results.pkl")
+    path = Path("output/evaluation_results.pkl")
     path.parent.mkdir(parents=True, exist_ok=True)
     
     with open(path, "wb") as f:
         pickle.dump(results, f)
     
-    csv_path = Path("output/images/evaluation_results.csv")
+    csv_path = Path("output/evaluation_results.csv")
     with open(csv_path, "w", newline='') as f:
         if not results:
             return
@@ -145,7 +144,7 @@ def save_evaluation_results(results):
             row = {k: v for k, v in result.items() if k in fieldnames}
             writer.writerow(row)
     
-    print(f"\nResultados guardados em output/images/evaluation_results.pkl e .csv")
+    print(f"\nResultados guardados em output/evaluation_results.pkl e .csv")
 
 
 def print_evaluation_summary(results):
