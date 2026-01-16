@@ -4,8 +4,6 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 
 class InteractiveParetoExplorer:
-    """Explorador interativo da Frente de Pareto."""
-    
     def __init__(self, results_path: str = "output/moead_results.pkl"):
         self.results_path = Path(results_path)
         if not self.results_path.exists():
@@ -19,14 +17,12 @@ class InteractiveParetoExplorer:
         self.fig, (self.ax_plot, self.ax_info) = plt.subplots(1, 2, figsize=(16, 7))
         
     def _get_walk_distance(self, sol):
-        """Calcula distância a pé de uma solução."""
         edges = sol.get('edges', [])
         if edges:
             return sum(e.get('distance_km', 0.0) for e in edges if e.get('modo') == 'walk')
         return 0.0
     
     def _get_transfers(self, sol):
-        """Calcula número de transbordos (mudanças de modo de transporte)."""
         edges = sol.get('edges', [])
         if not edges:
             return 0
@@ -46,7 +42,6 @@ class InteractiveParetoExplorer:
         return transfers
     
     def _get_mode_breakdown(self, sol):
-        """Retorna breakdown de modos."""
         edges = sol.get('edges', [])
         if not edges:
             return {}
@@ -66,7 +61,6 @@ class InteractiveParetoExplorer:
         return totals
     
     def _get_segments(self, sol):
-        """Retorna segmentos contíguos por modo."""
         edges = sol.get('edges', [])
         path = sol.get('path', [])
         if not edges or len(path) < 2:
@@ -100,7 +94,6 @@ class InteractiveParetoExplorer:
         return segments
     
     def _format_solution_info(self, sol, idx):
-        """Formata informações de uma solução."""
         walk_dist = self._get_walk_distance(sol)
         transfers = self._get_transfers(sol)
         breakdown = self._get_mode_breakdown(sol)
@@ -132,7 +125,6 @@ class InteractiveParetoExplorer:
         return info
     
     def _on_pick(self, event):
-        """Handler para clique em ponto."""
         if event.artist != self.scatter:
             return
         
@@ -154,7 +146,6 @@ class InteractiveParetoExplorer:
         self.fig.canvas.draw()
     
     def _reset_selection(self, event):
-        """Reset da seleção."""
         self.ax_info.clear()
         self.ax_info.axis('off')
         self.ax_info.text(0.5, 0.5, 'Clique num ponto para ver detalhes',
@@ -165,7 +156,6 @@ class InteractiveParetoExplorer:
         self.fig.canvas.draw()
     
     def run(self):
-        """Inicia a exploração interativa."""
         times = [s["time"] for s in self.pareto_front]
         co2s = [s["co2"] for s in self.pareto_front]
         

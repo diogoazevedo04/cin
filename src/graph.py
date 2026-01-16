@@ -145,8 +145,7 @@ def add_walk_edges(graph):
                 graph.add_edge(v, u, **attrs)
         
 
-def save_graph(graph: nx.MultiDiGraph, output_path: str) -> None:
-    """Serializa o grafo para disco usando pickle."""
+def save_graph(graph, output_path):
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     
@@ -155,7 +154,6 @@ def save_graph(graph: nx.MultiDiGraph, output_path: str) -> None:
 
 
 def build_graph() -> None:
-    """Executa o pipeline completo de construção do grafo."""
     graph = nx.MultiDiGraph()
     
     load_stops(graph, "data/gtfs/mdp/stops.txt", "metro")

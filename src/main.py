@@ -2,8 +2,6 @@ import csv
 import pickle
 from math import radians, sin, cos, sqrt, atan2
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
-import networkx as nx
 
 from moead import moead, get_edge
 
@@ -38,7 +36,7 @@ def walking_time(dist_km, speed_kmh = SPEED_KMH):
 
 
 def add_virtual_node(graph, node_id, lat, lon, k_neighbors = K_NEIGHBORS):
-    """Adiciona um ponto de interesse conectado aos K vizinhos mais próximos."""
+    """Adiciona nós de origem e destino e conecta aos K vizinhos mais próximos."""
     graph.add_node(node_id, lat=lat, lon=lon, modo="walk")
     
     distances = []
@@ -139,7 +137,7 @@ def segment_path(path, graph, edges=None):
 
 
 def print_solution_details(sol, graph, name = "Solução"):
-    """Imprime detalhes de uma solução (dict)."""
+    """Imprime detalhes de uma solução."""
     edges = sol.get("edges")
     path = sol.get("path", [])
     print(f"\n{'='*60}\n{name.upper()}\n{'='*60}")
@@ -163,8 +161,7 @@ def print_solution_details(sol, graph, name = "Solução"):
         print(f" - {mode.upper()}: {a} → {b} | {tmin:.1f} min | {dkm:.2f} km")
 
 
-def print_comparison(solutions_dict: Dict[str, Dict[str, Any]]):
-    """Imprime tabela comparativa de soluções."""
+def print_comparison(solutions_dict):
     print(f"\n{'='*60}\nCOMPARAÇÃO DE SOLUÇÕES\n{'='*60}\n")
     print(f"{'Critério':<15} {'Tempo':<15} {'CO₂':<15} {'A pé (km)':<15}")
     print("-" * 60)
@@ -206,7 +203,7 @@ def save_pareto_csv(pareto_front, graph, filepath):
 # --- Função Principal ---
 
 def get_coordinates(location_name):
-    """Pede ao utilizador as coordenadas (latitude, longitude)."""
+    """Pede ao utilizador as coordenadas (latitude, longitude) origem e destino."""
     while True:
         try:
             coords_input = input(f"Insira as coordenadas de {location_name} (lat, lon): ")
@@ -218,7 +215,6 @@ def get_coordinates(location_name):
 
 def run_optimization():
     """Pipeline completo de otimização."""
-    # Pedir coordenadas ao utilizador
     print(f"\n{'='*60}")
     print("OTIMIZAÇÃO DE ROTAS MULTIOBJETIVO")
     print(f"{'='*60}\n")

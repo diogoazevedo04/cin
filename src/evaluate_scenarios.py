@@ -1,20 +1,13 @@
-"""
-Avaliação do MOEA/D em diferentes cenários.
-Compara soluções e coleta métricas de desempenho.
-"""
-
 import pickle
 import time
 import csv
 from pathlib import Path
-from typing import List, Dict, Any
-import networkx as nx
 
-from moead import moead, get_edge
+from moead import moead
 from scenarios import load_scenarios, print_scenarios_summary, generate_scenarios, save_scenarios
 
 
-def evaluate_scenario(graph, scenario, timeout=300):
+def evaluate_scenario(graph, scenario):
     """
     Avalia um cenário único.
     Retorna métricas de desempenho e qualidade da solução.
@@ -24,7 +17,6 @@ def evaluate_scenario(graph, scenario, timeout=300):
     difficulty = scenario['difficulty']
     air_distance = scenario['air_distance_km']
     
-    # Executa MOEA/D com os nós já existentes no grafo
     start_time = time.time()
     try:
         pareto_front, extremes, history = moead(
@@ -42,7 +34,6 @@ def evaluate_scenario(graph, scenario, timeout=300):
         print(f"Sem soluções encontradas")
         return None
     
-    # Coleta métricas
     times = [s["time"] for s in pareto_front]
     co2s = [s["co2"] for s in pareto_front]
     
@@ -70,6 +61,7 @@ def run_full_evaluation(num_scenarios=None):
     """
     # Carrega grafo
     graph_path = "output/graph_base.gpickle"
+
     if not Path(graph_path).exists():
         print(f"Grafo não encontrado em {graph_path}")
         return
